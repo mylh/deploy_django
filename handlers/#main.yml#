@@ -1,0 +1,16 @@
+- name: reload django
+  shell: '{{app_venv_path}}bin/python ./manage.py collectstatic --noinput; {{app_venv_path}}bin/python ./manage.py migrate --noinput;'
+  args:
+    chdir: '{{app_root_path}}'
+
+- name: reload app
+  file: path='{{install_path}}touch-reload.txt' state=touch
+
+- name: reload nginx
+  shell: service nginx reload
+
+- name: restart supervisor
+  shell: service supervisor restart
+
+- name: update supervisor
+  shell: supervisorctl update

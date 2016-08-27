@@ -1,0 +1,169 @@
+---
+- name: ensure aptitude is installed
+  apt: pkg=aptitude state=present
+  tags:
+    - install
+
+- name: update package keys
+  shell: apt-key update
+
+- name: update package list
+  apt: update_cache=yes cache_valid_time=86400
+
+- name: install dependency packages
+  apt: pkg={{item}} state=present force=yes
+  with_items: "{{apt_install}}"
+  tags:
+    - install
+
+- name: Install python
+  include: python.yaml
+  tags: install
+  become: true
+  become_user: root
+  when: install_python == True
+
+- name: Install nginx
+  include: nginx.yaml
+  tags:
+    - install
+    - install_ssl
+  become: true
+  become_user: root
+  when: install_nginx == True
+
+- name: Install supervisor
+  include: supervisor.yaml
+  tags: install
+  become: true
+  become_user: root
+  when: install_supervisor == True
+
+- include: web_data_folders.yaml
+  tags: install
+  become: true
+  become_user: root
+
+- name: Install uwsgi
+  include: uwsgi.yaml
+  tags: install
+  become: true
+  become_user: root
+  when: install_uwsgi == True
+
+- name: geoip
+  include: geoip2.yaml
+  become: true
+  become_user: root
+  when: install_geoip == True
+
+- name: delete everything
+  file: path="{{install_path}}" state=absent
+  when: purge_before_install
+  tags:
+    - install
+
+- name: create install directory
+  file: name="{{install_path}}" state=directory owner="{{app_user}}" group="{{app_group}}" mode="u=rwx,g=rwx,o=rx"
+  tags:
+    - install
+
+- name: create ssl directory
+  file: name="{{install_path}}/ssl" state=directory owner="{{app_user}}" group="{{app_group}}" mode="u=rwx,g=rwx,o="
+  when: install_ssl
+  tags:
+    - install
+    - install_ssl
+
+- name: copy ssl keys
+  synchronize: src="{{ssl_crt_path}}" dest="{{install_path}}/ssl" delete=yes recursive=yes set_remote_user=no rsync_opts="--chown={{app_user}}:{{app_group}}"
+  become_user: "{{app_user}}"
+  become: True
+  when: install_ssl
+  tags:
+    - install
+    - install_ssl
+
+# deployment from GIT repo
+- name: copy deployment ssh keys
+  copy: src="{{item.value}}" dest="/home/ubuntu/.ssh/{{item.key}}" mode="u=rw,g=,o=" force=True
+  become_user: "{{app_user}}"
+  become: True
+  with_dict:
+    id_rsa: "{{deployment_priv_key_path}}"
+    id_rsa.pub: "{{deployment_pub_key_path}}"
+  when: deploy_from_git
+  tags:
+    - install
+
+- name: clone GIT repos
+  git: repo="{{git_repo}}" dest="{{install_path}}code" accept_hostkey=yes force=yes
+  become_user: "{{app_user}}"
+  become: True
+  when: deploy_from_git
+  tags:
+    - install
+    - deploy
+
+# deployment from local directory
+- name: create app directory
+  file: name="{{app_root_path}}" state=directory owner="{{app_user}}" group="{{app_group}}" mode="u=rwx,g=rx,o=rx"
+  when: deploy_from_local
+  tags:
+    - install
+
+- name: copy src directory
+  synchronize: src="{{local_src_path}}" dest="{{install_path}}code/" delete=yes recursive=yes set_remote_user=no rsync_opts="--chown={{app_user}}:{{app_group}}"
+  become: False
+  when: deploy_from_local
+  tags:
+    - deploy
+    - install
+
+
+- name: remove previous venv
+  file: path='{{app_venv_path}}' state=absent
+  when: clear_venv
+  tags:
+    - install
+
+- name: create virtual enviroment
+  shell: virtualenv -p python3 '{{app_venv_path}}' --system-site-packages creates='{{app_venv_path}}'
+  become_user: "{{app_user}}"
+  become: True
+  tags:
+    - install
+
+- name: check if requirements.pip is present
+  stat: path='{{app_root_path}}requirements.pip'
+  register: req_pip
+
+- name: installing dependencies from requirements.pip
+  shell: "{{app_venv_path}}bin/pip3 install -r requirements.pip"
+  args:
+    chdir: '{{app_root_path}}'
+  become_user: ubuntu
+  become: true
+  when: req_pip.stat.exists == True
+  tags:
+    - install
+
+- name: check if setup.py is present
+  stat: path='{{app_root_path}}setup.py'
+  register: setup_py
+
+- name: install local package
+  shell: "{{app_venv_path}}/bin/pip3 install -e ."
+  args:
+    chdir: '{{app_root_path}}'
+  become_user: "{{app_user}}"
+  become: true
+  when: setup_py.stat.exists == True
+  tags:
+    - install
+
+- name: Install monit config
+  template: src=monit/app.conf dest="/etc/monit/conf.d/{{app_name}}.conf"
+  tags:
+    - install
+  when: install_monit == True

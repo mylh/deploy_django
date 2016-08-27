@@ -1,0 +1,20 @@
+---
+# - name: install uwsgi server
+#   pip: name=uwsgi virtualenv={{ uwsgi_venv_path }} version=2.0
+#   sudo: yes
+
+- name: create virtual enviroment for uwsgi
+  shell: virtualenv -p python3 '{{uwsgi_venv_path}}'
+  tags:
+    - install
+
+- name: install uwsgi server
+  shell: "{{uwsgi_venv_path}}/bin/pip3 install uwsgi"
+  tags:
+    - install
+
+- name: configure app on uwsgi server
+  template: src=uwsgi/app_uwsgi.ini dest={{ uwsgi_config_path }}{{ uwsgi_app_ini }}
+  tags:
+    - install
+  notify: update supervisor
