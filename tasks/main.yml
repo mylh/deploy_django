@@ -162,6 +162,15 @@
   tags:
     - install
 
+- name: set logs permissions
+  file: path="{{item}}" state=file
+        owner="{{ app_user }}" group="{{ app_group }}" mode=0660
+  with_items:
+      - "{{install_path}}logs/django.log"
+  tags:
+    - deploy
+    - install
+
 - name: Install monit config
   template: src=monit/app.conf dest="/etc/monit/conf.d/{{app_name}}.conf"
   tags:
