@@ -113,7 +113,7 @@
     - install
 
 - name: copy src directory
-  synchronize: src="{{local_src_path}}" dest="{{install_path}}code/" delete=yes recursive=yes set_remote_user=no rsync_opts="--chown={{app_user}}:{{app_group}}"
+  synchronize: src="{{local_src_path}}" dest="{{install_path}}code/" delete=yes recursive=yes set_remote_user=yes rsync_opts="--chown={{app_user}}:{{app_group}}"
   become: False
   when: deploy_from_local
   tags:
@@ -151,6 +151,9 @@
 - name: check if setup.py is present
   stat: path='{{app_root_path}}setup.py'
   register: setup_py
+  tags:
+    - install
+    - deploy
 
 - name: install local package
   shell: "{{app_venv_path}}/bin/pip3 install -e ."
@@ -161,9 +164,10 @@
   when: setup_py.stat.exists == True
   tags:
     - install
+    - deploy
 
 - name: set logs permissions
-  file: path="{{item}}" state=file
+  file: path="{{item}}" state=touch
         owner="{{ app_user }}" group="{{ app_group }}" mode=0660
   with_items:
       - "{{install_path}}logs/django.log"
